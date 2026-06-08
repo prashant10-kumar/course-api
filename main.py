@@ -13,11 +13,13 @@ class UserCreate(BaseModel):
     password : str = Field(min_length = 8)
     role : UserRole
 
+    model_config = {"use_enum_values": True}
+
 class Token(BaseModel):
     access_token : str
     token_type : str
 
-oauth2_scheme = OAuth2PasswordBearer(tokenU rl = "login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "login")
 
 models.Base.metadata.create_all(bind = engine)
 
@@ -126,6 +128,10 @@ def login(from_data : OAuth2PasswordRequestForm = Depends(), db : Session = Depe
 def view_courses(db: Session = Depends(get_db)):
     return db.query(models.Course).all()
 
-@app.post("/courses", response_model = List[CourseResponse])
-def add_course(course: CourseCreate, db : Session = Depends(get_db), current_user : models.User = Depends(get_current_user)):
-    new_course = models.Course(title = course.title, )
+@app.post("/courses", response_model = CourseResponse)
+def add_course(course: CourseCreate, db : Session = Depends(get_db), current_user : models.User = Depends(get_current_instructor)):
+    new_course = models.Course(title = course.title, description = course.description, level = course.level, user_id = current_user.id)
+    db.add(new_course)
+    db.commit()
+    db.refresh(new_course)
+    return new_course
