@@ -17,7 +17,7 @@ class Token(BaseModel):
     access_token : str
     token_type : str
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "login")
+oauth2_scheme = OAuth2PasswordBearer(tokenU rl = "login")
 
 models.Base.metadata.create_all(bind = engine)
 
@@ -83,8 +83,16 @@ def get_current_user(token : str = Depends(oauth2_scheme), db: Session = Depends
             status_code = 401,
             detail = "User not found"
         )
-    return user       
+    return user 
 
+def get_current_instructor(current_user: models.User = Depends(get_current_user)):
+    if current_user.role != UserRole.instructor:
+        raise HTTPException(
+            status_code=403,
+            detail="Only instructors can perform this action"
+        )
+    return current_user
+          
 @app.post("/register")
 def register(user: UserCreate, db : Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(
@@ -113,3 +121,11 @@ def login(from_data : OAuth2PasswordRequestForm = Depends(), db : Session = Depe
         )
     token = auth.create_access_token(data = {"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}
+
+@app.get("/courses", response_model = List[CourseResponse])
+def view_courses(db: Session = Depends(get_db)):
+    return db.query(models.Course).all()
+
+@app.post("/courses", response_model = List[CourseResponse])
+def add_course(course: CourseCreate, db : Session = Depends(get_db), current_user : models.User = Depends(get_current_user)):
+    new_course = models.Course(title = course.title, )
