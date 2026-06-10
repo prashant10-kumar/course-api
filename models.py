@@ -31,7 +31,7 @@ class Course(Base):
     level = Column(Enum(CourseLevel), nullable = False)
     user_id = Column(Integer ,ForeignKey("users.id"), nullable = False)
     owner = relationship("User", back_populates = "course")
-    lesson = relationship("Lesson" , back_populates = "course")
+    lesson = relationship("Lesson" , back_populates = "course", cascade="all, delete-orphan") 
     enrolled = relationship("Enrollment", back_populates = "course")
 
 
@@ -40,7 +40,7 @@ class Lesson(Base):
     id = Column(Integer, primary_key = True, index = True)
     title = Column(String, nullable = False)
     duration_time = Column(Integer, nullable = False)
-    order = Column(Integer, index = True)
+    order = Column(Integer, nullable = False, default = 0)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable = False)
     course = relationship("Course", back_populates = "lesson")
 

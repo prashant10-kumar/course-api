@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from typing import List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 import models
 import auth
 from models import UserRole, CourseLevel
@@ -63,6 +63,17 @@ class LessonResponse(BaseModel):
         from_attributes = True
 
 
+class CourseWithLesson(BaseModel):
+    id: int
+    title: str
+    description: str
+    level: str
+    lesson: List[LessonResponse]
+
+    class Config:
+        from_attributes = True
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -112,10 +123,12 @@ def register(user: UserCreate, db : Session = Depends(get_db)):
     return {"message" : "User registered successfully"}
 
 @app.post("/login", response_model = Token)
-def login(from_data : OAuth2PasswordRequestForm = Depends(), db : Session = Depends(get_db)):
+def login(from_data : OAuth2PasswordRequestForm = Depends(), 
+          db : Session = Depends(get_db)):
     user = db.query(models.User).filter(
         models.User.username == from_data.username
     ).first()
+    
     if not user or not auth.verify_password(from_data.password, user.password):
         raise HTTPException(
             status_code = 401, 
@@ -129,9 +142,94 @@ def view_courses(db: Session = Depends(get_db)):
     return db.query(models.Course).all()
 
 @app.post("/courses", response_model = CourseResponse)
-def add_course(course: CourseCreate, db : Session = Depends(get_db), current_user : models.User = Depends(get_current_instructor)):
-    new_course = models.Course(title = course.title, description = course.description, level = course.level, user_id = current_user.id)
+def add_course(course: CourseCreate, 
+               db : Session = Depends(get_db), 
+               current_user : models.User = Depends(get_current_instructor)):
+    
+    new_course = models.Course(title = course.title, 
+                               description = course.description,
+                               level = course.level,
+                               user_id = current_user.id)
+    
     db.add(new_course)
     db.commit()
     db.refresh(new_course)
     return new_course
+
+@app.get("/courses/{course_id}", response_model=CourseWithLesson)
+def get_course(course_id: int, db: Session = Depends(get_db)):
+    course = db.query(models.Course).options(
+        joinedload(models.Course.lesson)
+    ).filter(
+        models.Course.id == course_id
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
+@app.post("/courses/{course_id}/lessons", response_model = LessonResponse)
+def add_lesson(course_id : int,lesson : LessonsCreate, 
+               db : Session = Depends(get_db), 
+               current_user : models.User = Depends(get_current_instructor)):
+    course = db.query(models.Course).filter(models.Course.id == course_id,
+                                             models.Course.user_id == current_user.id).first()
+   
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    lesson_count = db.query(models.Lesson).filter(models.Lesson.course_id == course_id).count()
+    order = lesson_count + 1
+    new_lesson = models.Lesson(title = lesson.title,
+                               duration_time = lesson.duration_time,
+                               course_id = course_id,
+                               order = order)
+    
+    db.add(new_lesson)
+    db.commit()
+    db.refresh(new_lesson)
+    return new_lesson
+
+@app.patch("/course/{id}", response_model = CourseResponse)
+def updt_course(id : int, update : CourseUpdate,
+                db : Session = Depends(get_db),
+                current_user : models.User = Depends(get_current_instructor)):
+    course = db.query(models.Course).filter(models.Course.id == id, 
+                                            models.Course.user_id == current_user.id).first()
+    
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    course.level = update.level
+    course.title = update.title
+    course.description = update.description
+    db.commit()
+    db.refresh(course)
+    return course
+
+@app.delete("/course/{id}")
+def del_course(id : int, 
+               db : Session = Depends(get_db),
+               current_user : models.User = Depends(get_current_instructor)):
+    course = db.query(models.Course).filter(models.Course.id == id, models.Course.user_id == current_user.id).first()
+    
+    if not course:
+        raise HTTPException(status_code = 404, detail = "Course Not Found")
+    db.delete(course)
+    db.commit()
+    return {"message": f"Course with id {id} deleted successfully"}
+
+@app.delete("/lesson/{id}")
+def del_lesson(id : int, 
+               db : Session = Depends(get_db),
+               current_user : models.User = Depends(get_current_instructor)):
+    lesson = db.query(models.Lesson).filter(models.Lesson.id == id).first()
+    if not lesson:
+        raise HTTPException(status_code = 404, detail = "Lesson Not Found")
+    
+    course = db.query(models.Course).filter(
+        models.Course.id == lesson.course_id,
+        models.Course.user_id == current_user.id
+    ).first()
+    if not course:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    db.delete(lesson)
+    db.commit()
+    return {"message": f"Lesson with id {id} deleted successfully"}
