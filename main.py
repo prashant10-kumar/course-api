@@ -105,6 +105,14 @@ def get_current_instructor(current_user: models.User = Depends(get_current_user)
             detail="Only instructors can perform this action"
         )
     return current_user
+
+def get_current_student(current_user : models.User = Depends(get_current_user)):
+    if current_user.role != UserRole.student:
+        raise HTTPException(
+            status_code = 403,
+            detail = "Only student can perform this action"
+        )
+    return current_user
           
 @app.post("/register")
 def register(user: UserCreate, db : Session = Depends(get_db)):
@@ -233,3 +241,20 @@ def del_lesson(id : int,
     db.delete(lesson)
     db.commit()
     return {"message": f"Lesson with id {id} deleted successfully"}
+
+@app.get("/my-course", response_model = List[CourseResponse])
+def my_enrolled_courses(db : Session = Depends(get_db),
+                        current_user : models.User = Depends(get_current_student)):
+    my_courses = db.query(models.Course).join(models.Enrollment).filter(
+        models.Enrollment.uesr_id == current_user.id
+    ).all()
+    return my_courses
+
+@app.get("/my-created-courses", response_model = List[CourseResponse])
+def my_crested_courses(db : Session = Depends(get_db),
+                       current_user : models.User = Depends(get_current_instructor)):
+    
+    my_courses = db.query(models.Course).filter(
+        models.Course.user_id == current_user.id
+    ).all()
+    return my_courses
