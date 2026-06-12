@@ -289,13 +289,6 @@ def enrolling(course_id :int,
                             detail = "Course not found"
                             )
     
-
-    if course.user_id == current_user.id:
-        raise HTTPException(
-            status_code = 400,
-            detail = "You cannot enroll in your own course"
-        )
-    
     existing = db.query(models.Enrollment).filter(
         models.Enrollment.user_id == current_user.id,
         models.Enrollment.course_id == course_id
@@ -314,4 +307,4 @@ def enrolling(course_id :int,
 
     db.add(new_enrollment)
     db.commit()
-    return {"message" : f"Successfullt enrolled in course {course_id}"}
+    return {"message" : f"Successfully enrolled in course {course_id}"}
