@@ -164,17 +164,6 @@ def add_course(course: CourseCreate,
     db.refresh(new_course)
     return new_course
 
-@app.get("/courses/{course_id}", response_model=CourseWithLesson)
-def get_course_with_lesson(course_id: int, db: Session = Depends(get_db)):
-    course = db.query(models.Course).options(
-        joinedload(models.Course.lesson)
-    ).filter(
-        models.Course.id == course_id
-    ).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course
-
 @app.post("/courses/{course_id}/lessons", response_model = LessonResponse)
 def add_lesson(course_id : int,lesson : LessonsCreate, 
                db : Session = Depends(get_db), 
@@ -190,11 +179,21 @@ def add_lesson(course_id : int,lesson : LessonsCreate,
                                duration_time = lesson.duration_time,
                                course_id = course_id,
                                order = order)
-    
     db.add(new_lesson)
     db.commit()
     db.refresh(new_lesson)
     return new_lesson
+
+@app.get("/courses/{course_id}", response_model=CourseWithLesson)
+def get_course_with_lesson(course_id: int, db: Session = Depends(get_db)):
+    course = db.query(models.Course).options(
+        joinedload(models.Course.lesson)
+    ).filter(
+        models.Course.id == course_id
+    ).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
 
 @app.patch("/course/{id}", response_model = CourseResponse)
 def updt_course(id : int, update : CourseUpdate,
