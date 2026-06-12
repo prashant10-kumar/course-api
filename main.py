@@ -165,7 +165,7 @@ def add_course(course: CourseCreate,
     return new_course
 
 @app.get("/courses/{course_id}", response_model=CourseWithLesson)
-def get_course(course_id: int, db: Session = Depends(get_db)):
+def get_course_with_lesson(course_id: int, db: Session = Depends(get_db)):
     course = db.query(models.Course).options(
         joinedload(models.Course.lesson)
     ).filter(
@@ -200,14 +200,17 @@ def add_lesson(course_id : int,lesson : LessonsCreate,
 def updt_course(id : int, update : CourseUpdate,
                 db : Session = Depends(get_db),
                 current_user : models.User = Depends(get_current_instructor)):
+    
     course = db.query(models.Course).filter(models.Course.id == id, 
                                             models.Course.user_id == current_user.id).first()
     
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+    
     course.level = update.level
     course.title = update.title
     course.description = update.description
+
     db.commit()
     db.refresh(course)
     return course
@@ -216,10 +219,14 @@ def updt_course(id : int, update : CourseUpdate,
 def del_course(id : int, 
                db : Session = Depends(get_db),
                current_user : models.User = Depends(get_current_instructor)):
-    course = db.query(models.Course).filter(models.Course.id == id, models.Course.user_id == current_user.id).first()
+    
+    course = db.query(models.Course).filter(models.Course.id == id,
+                                            models.Course.user_id == current_user.id
+                                            ).first()
     
     if not course:
         raise HTTPException(status_code = 404, detail = "Course Not Found")
+    
     db.delete(course)
     db.commit()
     return {"message": f"Course with id {id} deleted successfully"}
@@ -228,16 +235,24 @@ def del_course(id : int,
 def del_lesson(id : int, 
                db : Session = Depends(get_db),
                current_user : models.User = Depends(get_current_instructor)):
+    
     lesson = db.query(models.Lesson).filter(models.Lesson.id == id).first()
+
     if not lesson:
-        raise HTTPException(status_code = 404, detail = "Lesson Not Found")
+        raise HTTPException(status_code = 404,
+                            detail = "Lesson Not Found"
+                            )
     
     course = db.query(models.Course).filter(
         models.Course.id == lesson.course_id,
         models.Course.user_id == current_user.id
     ).first()
+
     if not course:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise HTTPException(status_code=403,
+                            detail="Not authorized"
+                            )
+    
     db.delete(lesson)
     db.commit()
     return {"message": f"Lesson with id {id} deleted successfully"}
@@ -245,16 +260,58 @@ def del_lesson(id : int,
 @app.get("/my-course", response_model = List[CourseResponse])
 def my_enrolled_courses(db : Session = Depends(get_db),
                         current_user : models.User = Depends(get_current_student)):
+    
     my_courses = db.query(models.Course).join(models.Enrollment).filter(
-        models.Enrollment.uesr_id == current_user.id
+        models.Enrollment.user_id == current_user.id
     ).all()
+
     return my_courses
 
 @app.get("/my-created-courses", response_model = List[CourseResponse])
-def my_crested_courses(db : Session = Depends(get_db),
+def my_created_courses(db : Session = Depends(get_db),
                        current_user : models.User = Depends(get_current_instructor)):
     
     my_courses = db.query(models.Course).filter(
         models.Course.user_id == current_user.id
     ).all()
+
     return my_courses
+
+@app.post("/courses/{course_id}/enroll")
+def enrolling(course_id :int,
+              db : Session = Depends(get_db),
+              current_user : models.User = Depends(get_current_student)):
+    
+    course = db.query(models.Course).filter(models.Course.id == course_id).first()
+
+    if not course:
+        raise HTTPException(status_code = 404,
+                            detail = "Course not found"
+                            )
+    
+
+    if course.user_id == current_user.id:
+        raise HTTPException(
+            status_code = 400,
+            detail = "You cannot enroll in your own course"
+        )
+    
+    existing = db.query(models.Enrollment).filter(
+        models.Enrollment.user_id == current_user.id,
+        models.Enrollment.course_id == course_id
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code = 409,
+            detail = "Already enrolled in this course"
+        )
+    
+    new_enrollment = models.Enrollment(
+        user_id = current_user.id,
+        course_id = course_id
+    )
+
+    db.add(new_enrollment)
+    db.commit()
+    return {"message" : f"Successfullt enrolled in course {course_id}"}
